@@ -1,0 +1,152 @@
+#!/usr/bin/env bash
+# gh rinai — the Rinai board from the command line, as a gh extension.
+#
+# Every verb is one call to the Rinai API with gh's own token. The token never
+# appears on a command line: curl reads it as config on stdin. The
+# host is a constant here, so no issue body can send the token anywhere else.
+# RINAI_URL overrides it for a local worker.
+set -euo pipefail
+
+VERSION="0.1.0"
+RINAI_URL="${RINAI_URL:-https://rinai.dev}"
+
+usage() {
+  cat <<'EOF'
+gh rinai — a board over GitHub issues, for agents and people
+
+  gh rinai board                         the board as markdown
+  gh rinai brief N                       one issue as a brief (its .md)
+  gh rinai claim N                       move to Ongoing and assign yourself
+  gh rinai move N COLUMN                 future | todo | ongoing | in-review | blocked | done
+  gh rinai priority N LEVEL              urgent | high | normal | low
+  gh rinai comment N [TEXT | -]          plain text; "-" reads stdin
+  gh rinai attach N FILE                 attach a file to the issue
+  gh rinai file TITLE [-c COL] [-p PRIO] [-P PARENT] [-b BODY | -b -] [-m]
+                                         file an issue; -m assigns you
+  gh rinai search [-c COL] [-a @me|LOGIN] [-p PRIO] [-l LABEL] [-t TEXT]
+                                         the board's cards as JSON, filtered
+  gh rinai merge PR [--force]            merge the pull request when its checks are green
+  gh rinai api METHOD PATH [JSON]        anything else: PATH is under /api/OWNER/REPO
+
+  -R OWNER/REPO before the verb picks the repository; otherwise the current one.
+  RINAI_URL=http://127.0.0.1:8787 points every call at a local worker.
+EOF
+}
+
+die() { printf 'gh rinai: %s\n' "$*" >&2; exit 1; }
+
+repo=""
+if [ "${1:-}" = "-R" ]; then
+  [ -n "${2:-}" ] || die "-R needs OWNER/REPO"
+  repo="$2"; shift 2
+fi
+verb="${1:-}"; [ $# -gt 0 ] && shift
+
+need_repo() {
+  [ -n "$repo" ] && return
+  repo="${GH_REPO:-}"
+  [ -n "$repo" ] && return
+  repo="$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null || true)"
+  [ -n "$repo" ] || die "not in a repository; pass -R OWNER/REPO"
+}
+
+# curl with the token piped in as config, never in argv. Every verb that
+# reads stdin drains it before this runs. Prints the body; the status rides on the last line and is split off by the caller.
+call() {
+  local method="$1" url="$2"; shift 2
+  printf 'header = "Authorization: Bearer %s"\n' "$(gh auth token)" |
+    curl -sS -X "$method" -K - -H "User-Agent: gh-rinai/$VERSION" -w '\n%{http_code}' "$url" "$@"
+}
+
+# call, then: 2xx prints the body (or the caller's line) and 0; else the
+# error body on stderr and 1. The API's errors are {"error":{"code","message"}}.
+run() {
+  local said="$1" method="$2" path="$3"; shift 3
+  local out status body
+  out="$(call "$method" "$RINAI_URL$path" "$@")"
+  status="${out##*$'\n'}"; body="${out%$'\n'*}"
+  case "$status" in
+    2*) if [ -n "$said" ]; then printf '%s\n' "$said"; else printf '%s\n' "$body"; fi ;;
+    *)  printf '%s\n' "$body" >&2; return 1 ;;
+  esac
+}
+
+api() { need_repo; run "$1" "$2" "/api/$repo$3" "${@:4}"; }
+patch() { api "$1" PATCH "/issues/$2" -H "content-type: application/json" -d "$3"; }
+
+json_str() {
+  printf '"%s"' "$(printf '%s' "$1" | awk 'BEGIN{ORS=""} {gsub(/\\/,"\\\\"); gsub(/"/,"\\\""); gsub(/\t/,"\\t"); if (NR>1) printf "\\n"; printf "%s", $0}')"
+}
+
+num() { [[ "${1:-}" =~ ^[0-9]+$ ]] || die "expected an issue number, got '${1:-}'"; }
+
+case "$verb" in
+  board)
+    need_repo; run "" GET "/$repo.md" ;;
+  brief|show)
+    num "${1:-}"; need_repo; run "" GET "/$repo/issues/$1.md" ;;
+  claim)
+    num "${1:-}"; patch "#$1 is yours, in Ongoing" "$1" '{"column":"ongoing","assignees":["@me"]}' ;;
+  move)
+    num "${1:-}"; [ -n "${2:-}" ] || die "move N COLUMN"
+    patch "#$1 moved to $2" "$1" "{\"column\":$(json_str "$2")}" ;;
+  priority)
+    num "${1:-}"; [ -n "${2:-}" ] || die "priority N LEVEL"
+    patch "#$1 priority $2" "$1" "{\"priority\":$(json_str "$2")}" ;;
+  comment)
+    num "${1:-}"; text="${2:-}"
+    [ -n "$text" ] || die 'comment N TEXT, or comment N - with the text on stdin'
+    tmp="$(mktemp)"; trap 'rm -f "$tmp"' EXIT
+    if [ "$text" = "-" ]; then cat > "$tmp"; else printf '%s' "$text" > "$tmp"; fi
+    api "commented on #$1" POST "/issues/$1/comments" -H "content-type: text/plain" --data-binary "@$tmp" ;;
+  attach)
+    num "${1:-}"; [ -f "${2:-}" ] || die "attach N FILE: no file '${2:-}'"
+    api "attached $(basename "$2") to #$1" POST "/issues/$1/artifacts" -F "file=@$2" ;;
+  file)
+    title="${1:-}"; [ -n "$title" ] || die 'file TITLE [-c COL] [-p PRIO] [-P PARENT] [-b BODY|-] [-m]'; shift
+    col=""; prio=""; parent=""; body=""; me=""
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        -c) col="$2"; shift 2 ;;
+        -p) prio="$2"; shift 2 ;;
+        -P) num "$2"; parent="$2"; shift 2 ;;
+        -b) body="$2"; [ "$body" = "-" ] && body="$(cat)"; shift 2 ;;
+        -m) me=1; shift ;;
+        *) die "file: unknown option $1" ;;
+      esac
+    done
+    json="{\"title\":$(json_str "$title")"
+    [ -n "$col" ] && json="$json,\"column\":$(json_str "$col")"
+    [ -n "$prio" ] && json="$json,\"priority\":$(json_str "$prio")"
+    [ -n "$parent" ] && json="$json,\"partOf\":$parent"
+    [ -n "$body" ] && json="$json,\"body\":$(json_str "$body")"
+    [ -n "$me" ] && json="$json,\"assignees\":[\"@me\"]"
+    json="$json}"
+    api "" POST "/issues" -H "content-type: application/json" -d "$json" ;;
+  search)
+    q=(-G)
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        -c) q+=(--data-urlencode "column=$2"); shift 2 ;;
+        -a) q+=(--data-urlencode "assignee=$2"); shift 2 ;;
+        -p) q+=(--data-urlencode "priority=$2"); shift 2 ;;
+        -l) q+=(--data-urlencode "label=$2"); shift 2 ;;
+        -t) q+=(--data-urlencode "title=$2"); shift 2 ;;
+        *) die "search: unknown option $1" ;;
+      esac
+    done
+    api "" GET "/issues" "${q[@]}" ;;
+  merge)
+    num "${1:-}"
+    if [ "${2:-}" = "--force" ]; then
+      api "PR $1: merging without checks" POST "/pulls/$1/merge-when-green" -H "content-type: application/json" -d '{"force":true}'
+    else
+      api "PR $1: merged, or will merge when the checks are green" POST "/pulls/$1/merge-when-green"
+    fi ;;
+  api)
+    [ -n "${1:-}" ] && [ -n "${2:-}" ] || die "api METHOD PATH [JSON]"
+    if [ -n "${3:-}" ]; then api "" "$1" "$2" -H "content-type: application/json" -d "$3"; else api "" "$1" "$2"; fi ;;
+  version|--version) printf 'gh-rinai %s\n' "$VERSION" ;;
+  ""|help|-h|--help) usage ;;
+  *) die "unknown verb '$verb' (gh rinai help)" ;;
+esac
