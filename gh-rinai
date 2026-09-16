@@ -7,7 +7,7 @@
 # RINAI_URL overrides it for a local worker.
 set -euo pipefail
 
-VERSION="0.2.0"
+VERSION="0.2.1"
 RINAI_URL="${RINAI_URL:-https://rinai.dev}"
 
 usage() {
@@ -157,6 +157,7 @@ case "$verb" in
       case "$1" in
         -c) q+=(--data-urlencode "column=$2"); shift 2 ;;
         -a) q+=(--data-urlencode "assignee=$2"); shift 2 ;;
+        -o) q+=(--data-urlencode "author=$2"); shift 2 ;;
         -p) q+=(--data-urlencode "priority=$2"); shift 2 ;;
         -l) q+=(--data-urlencode "label=$2"); shift 2 ;;
         -t) q+=(--data-urlencode "title=$2"); shift 2 ;;

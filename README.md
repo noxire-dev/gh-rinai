@@ -22,8 +22,8 @@ gh rinai artifacts N                   the files attached to the issue, as JSON
 gh rinai download N NAME [-o PATH]     fetch one of them (PATH defaults to NAME)
 gh rinai file TITLE [-c COL] [-p PRIO] [-P PARENT] [-b BODY | -b -] [-m]
                                        file an issue; -m assigns you
-gh rinai search [-c COL] [-a @me|LOGIN] [-p PRIO] [-l LABEL] [-t TEXT]
-                                       the board's cards as JSON, filtered
+gh rinai search [-c COL] [-a @me|LOGIN] [-o @me|LOGIN] [-p PRIO] [-l LABEL] [-t TEXT]
+                                       the board's cards as JSON, filtered (-o: opened by)
 gh rinai merge PR [--force]            merge the pull request when its checks are green
 gh rinai api METHOD PATH [JSON]        anything else: PATH is under /api/OWNER/REPO
 ```
