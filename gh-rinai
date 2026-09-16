@@ -7,7 +7,7 @@
 # RINAI_URL overrides it for a local worker.
 set -euo pipefail
 
-VERSION="0.1.0"
+VERSION="0.2.0"
 RINAI_URL="${RINAI_URL:-https://rinai.dev}"
 
 usage() {
@@ -21,6 +21,8 @@ gh rinai — a board over GitHub issues, for agents and people
   gh rinai priority N LEVEL              urgent | high | normal | low
   gh rinai comment N [TEXT | -]          plain text; "-" reads stdin
   gh rinai attach N FILE                 attach a file to the issue
+  gh rinai artifacts N                   the files attached to the issue, as JSON
+  gh rinai download N NAME [-o PATH]     fetch one of them (PATH defaults to NAME)
   gh rinai file TITLE [-c COL] [-p PRIO] [-P PARENT] [-b BODY | -b -] [-m]
                                          file an issue; -m assigns you
   gh rinai search [-c COL] [-a @me|LOGIN] [-p PRIO] [-l LABEL] [-t TEXT]
@@ -80,6 +82,16 @@ json_str() {
 
 num() { [[ "${1:-}" =~ ^[0-9]+$ ]] || die "expected an issue number, got '${1:-}'"; }
 
+# Git Bash on Windows rewrites an argument that starts with / into a Windows
+# path before a native gh sees it ("/issues" arrives as "C:/Program Files/Git/issues").
+# Undo it, so `gh rinai api GET /issues` means what it says on every platform.
+unmsys() {
+  case "$1" in
+    [A-Za-z]:/*) if command -v cygpath >/dev/null 2>&1; then printf '%s' "${1#"$(cygpath -m /)"}"; return; fi ;;
+  esac
+  printf '%s' "$1"
+}
+
 case "$verb" in
   board)
     need_repo; run "" GET "/$repo.md" ;;
@@ -102,6 +114,22 @@ case "$verb" in
   attach)
     num "${1:-}"; [ -f "${2:-}" ] || die "attach N FILE: no file '${2:-}'"
     api "attached $(basename "$2") to #$1" POST "/issues/$1/artifacts" -F "file=@$2" ;;
+  artifacts)
+    num "${1:-}"; api "" GET "/issues/$1/artifacts" ;;
+  download)
+    # The list gives each file's URL; the URL needs the same token. Both calls
+    # go through `call`, so the token stays off the command line here too.
+    num "${1:-}"; name="${2:-}"; [ -n "$name" ] || die "download N NAME [-o PATH]"
+    out="$name"; [ "${3:-}" = "-o" ] && { [ -n "${4:-}" ] || die "-o needs a PATH"; out="$4"; }
+    need_repo
+    listing="$(run "" GET "/api/$repo/issues/$1/artifacts")"
+    url="$(printf '%s' "$listing" | tr '{' '\n' | grep -F "\"filename\":\"$name\"" | sed -n 's/.*"url":"\([^"]*\)".*/\1/p' | head -1)"
+    [ -n "$url" ] || die "no artifact named '$name' on #$1 (gh rinai artifacts $1 lists them)"
+    status="$(call GET "$RINAI_URL$url" -o "$out" | tail -1)"
+    case "$status" in
+      2*) printf '%s <- #%s %s\n' "$out" "$1" "$name" ;;
+      *) rm -f "$out"; die "download failed with $status" ;;
+    esac ;;
   file)
     title="${1:-}"; [ -n "$title" ] || die 'file TITLE [-c COL] [-p PRIO] [-P PARENT] [-b BODY|-] [-m]'; shift
     col=""; prio=""; parent=""; body=""; me=""
@@ -145,7 +173,8 @@ case "$verb" in
     fi ;;
   api)
     [ -n "${1:-}" ] && [ -n "${2:-}" ] || die "api METHOD PATH [JSON]"
-    if [ -n "${3:-}" ]; then api "" "$1" "$2" -H "content-type: application/json" -d "$3"; else api "" "$1" "$2"; fi ;;
+    path="/$(unmsys "$2")"; path="/${path#/}"
+    if [ -n "${3:-}" ]; then api "" "$1" "$path" -H "content-type: application/json" -d "$3"; else api "" "$1" "$path"; fi ;;
   version|--version) printf 'gh-rinai %s\n' "$VERSION" ;;
   ""|help|-h|--help) usage ;;
   *) die "unknown verb '$verb' (gh rinai help)" ;;

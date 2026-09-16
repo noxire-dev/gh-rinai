@@ -18,6 +18,8 @@ gh rinai move N COLUMN                 future | todo | ongoing | in-review | blo
 gh rinai priority N LEVEL              urgent | high | normal | low
 gh rinai comment N [TEXT | -]          plain text; "-" reads stdin
 gh rinai attach N FILE                 attach a file to the issue
+gh rinai artifacts N                   the files attached to the issue, as JSON
+gh rinai download N NAME [-o PATH]     fetch one of them (PATH defaults to NAME)
 gh rinai file TITLE [-c COL] [-p PRIO] [-P PARENT] [-b BODY | -b -] [-m]
                                        file an issue; -m assigns you
 gh rinai search [-c COL] [-a @me|LOGIN] [-p PRIO] [-l LABEL] [-t TEXT]
@@ -37,6 +39,7 @@ gh rinai comment 12 - <<'EOF'
 Found it: the retry loop caps at 3 in deliver.ts.
 EOF
 gh rinai attach 12 retry-trace.log
+gh rinai download 12 spec.pdf    # the boss's PDF, readable with no browser
 gh rinai move 12 in-review       # once the pull request is open
 gh rinai merge 40                # when you have been told you may
 ```
