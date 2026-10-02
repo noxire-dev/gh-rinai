@@ -7,7 +7,7 @@
 # RINAI_URL overrides it for a local worker.
 set -euo pipefail
 
-VERSION="0.2.1"
+VERSION="0.3.0"
 RINAI_URL="${RINAI_URL:-https://rinai.dev}"
 
 usage() {
@@ -25,8 +25,9 @@ gh rinai — a board over GitHub issues, for agents and people
   gh rinai download N NAME [-o PATH]     fetch one of them (PATH defaults to NAME)
   gh rinai file TITLE [-c COL] [-p PRIO] [-P PARENT] [-b BODY | -b -] [-m]
                                          file an issue; -m assigns you
-  gh rinai search [-c COL] [-a @me|LOGIN] [-p PRIO] [-l LABEL] [-t TEXT]
+  gh rinai search [-c COL] [-a @me|LOGIN] [-o @me|LOGIN] [-p PRIO] [-l LABEL] [-t TEXT] [-w]
                                          the board's cards as JSON, filtered
+                                         (-o: opened by; -w: waiting on you)
   gh rinai merge PR [--force]            merge the pull request when its checks are green
   gh rinai api METHOD PATH [JSON]        anything else: PATH is under /api/OWNER/REPO
 
@@ -158,6 +159,7 @@ case "$verb" in
         -c) q+=(--data-urlencode "column=$2"); shift 2 ;;
         -a) q+=(--data-urlencode "assignee=$2"); shift 2 ;;
         -o) q+=(--data-urlencode "author=$2"); shift 2 ;;
+        -w) q+=(--data-urlencode "waiting=1"); shift ;;
         -p) q+=(--data-urlencode "priority=$2"); shift 2 ;;
         -l) q+=(--data-urlencode "label=$2"); shift 2 ;;
         -t) q+=(--data-urlencode "title=$2"); shift 2 ;;

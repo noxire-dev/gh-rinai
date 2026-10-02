@@ -1,0 +1,2 @@
+# The script must stay LF: bash on Linux and macOS will not run a CRLF file.
+gh-rinai text eol=lf
