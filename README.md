@@ -25,8 +25,13 @@ gh rinai file TITLE [-c COL] [-p PRIO] [-P PARENT] [-b BODY | -b -] [-m]
 gh rinai search [-c COL] [-a @me|LOGIN] [-o @me|LOGIN] [-p PRIO] [-l LABEL] [-t TEXT] [-w]
                                        the board's cards as JSON, filtered
                                        (-o: opened by; -w: waiting on you)
+gh rinai cycle                         what the board is doing now, in order, as JSON
+gh rinai cycle add N [N...]            put issues in the cycle
+gh rinai cycle rm N [N...]             take them out
+gh rinai cycle order N [N...]          set the cycle's order, first is most important
 gh rinai merge PR [--force]            merge the pull request when its checks are green
-gh rinai api METHOD PATH [JSON]        anything else: PATH is under /api/OWNER/REPO
+gh rinai api METHOD PATH [JSON | -]    anything else: PATH is under /api/OWNER/REPO;
+                                       "-" reads the JSON from stdin
 ```
 
 The repository is the current one, or `-R OWNER/REPO` before the verb, or `GH_REPO`.
@@ -52,6 +57,13 @@ One allowlist entry covers every verb:
 ```json
 { "permissions": { "allow": ["Bash(gh rinai *)"] } }
 ```
+
+## On Windows
+
+Native `gh` drops an argument that has double quotes and no space before a bash
+extension sees it, so `gh rinai api PATCH /issues/12 '{"cycle":true}'` sends nothing.
+Write the JSON with a space (`'{"cycle": true}'`) or send it on stdin with `-`. Every
+other verb builds its own JSON and is unaffected.
 
 ## Errors
 

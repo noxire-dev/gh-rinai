@@ -7,7 +7,7 @@
 # RINAI_URL overrides it for a local worker.
 set -euo pipefail
 
-VERSION="0.3.0"
+VERSION="0.4.0"
 RINAI_URL="${RINAI_URL:-https://rinai.dev}"
 
 usage() {
@@ -28,8 +28,13 @@ gh rinai — a board over GitHub issues, for agents and people
   gh rinai search [-c COL] [-a @me|LOGIN] [-o @me|LOGIN] [-p PRIO] [-l LABEL] [-t TEXT] [-w]
                                          the board's cards as JSON, filtered
                                          (-o: opened by; -w: waiting on you)
+  gh rinai cycle                         what the board is doing now, in order, as JSON
+  gh rinai cycle add N [N...]            put issues in the cycle
+  gh rinai cycle rm N [N...]             take them out
+  gh rinai cycle order N [N...]          set the cycle's order, first is most important
   gh rinai merge PR [--force]            merge the pull request when its checks are green
-  gh rinai api METHOD PATH [JSON]        anything else: PATH is under /api/OWNER/REPO
+  gh rinai api METHOD PATH [JSON | -]    anything else: PATH is under /api/OWNER/REPO;
+                                         "-" reads the JSON from stdin
 
   -R OWNER/REPO before the verb picks the repository; otherwise the current one.
   RINAI_URL=http://127.0.0.1:8787 points every call at a local worker.
@@ -167,6 +172,20 @@ case "$verb" in
       esac
     done
     api "" GET "/issues" "${q[@]}" ;;
+  cycle)
+    act="${1:-}"; [ $# -gt 0 ] && shift
+    case "$act" in
+      "") api "" GET "/issues" -G --data-urlencode "cycle=1" ;;
+      add|rm)
+        [ $# -gt 0 ] || die "cycle $act N [N...]"
+        on=true; said="is in the cycle"; [ "$act" = "rm" ] && { on=false; said="is out of the cycle"; }
+        for n in "$@"; do num "$n"; patch "#$n $said" "$n" "{\"cycle\":$on}"; done ;;
+      order)
+        [ $# -gt 0 ] || die "cycle order N [N...]"
+        list=""; for n in "$@"; do num "$n"; list="$list${list:+,}$n"; done
+        api "cycle order: $*" PUT "/board/rank" -H "content-type: application/json" -d "{\"cycle\":[$list]}" ;;
+      *) die "cycle, cycle add N, cycle rm N, or cycle order N N N" ;;
+    esac ;;
   merge)
     num "${1:-}"
     if [ "${2:-}" = "--force" ]; then
@@ -177,7 +196,17 @@ case "$verb" in
   api)
     [ -n "${1:-}" ] && [ -n "${2:-}" ] || die "api METHOD PATH [JSON]"
     path="/$(unmsys "$2")"; path="/${path#/}"
-    if [ -n "${3:-}" ]; then api "" "$1" "$path" -H "content-type: application/json" -d "$3"; else api "" "$1" "$path"; fi ;;
+    if [ $# -ge 3 ]; then
+      json="$3"
+      [ "$json" = "-" ] && json="$(cat)"
+      # Native gh on Windows drops an argument that has double quotes and no
+      # space before a bash extension sees it: '{"cycle":true}' arrives empty.
+      # Measured 2026-10-02. A body cannot be recovered here, only refused.
+      [ -n "$json" ] || die 'the JSON arrived empty. On Windows, gh drops an argument that has quotes and no space: write {"key": value} with a space, or pass - and send the JSON on stdin.'
+      api "" "$1" "$path" -H "content-type: application/json" -d "$json"
+    else
+      api "" "$1" "$path"
+    fi ;;
   version|--version) printf 'gh-rinai %s\n' "$VERSION" ;;
   ""|help|-h|--help) usage ;;
   *) die "unknown verb '$verb' (gh rinai help)" ;;
