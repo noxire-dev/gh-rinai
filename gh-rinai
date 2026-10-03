@@ -7,7 +7,7 @@
 # RINAI_URL overrides it for a local worker.
 set -euo pipefail
 
-VERSION="0.5.0"
+VERSION="0.6.0"
 RINAI_URL="${RINAI_URL:-https://rinai.dev}"
 
 usage() {
@@ -28,6 +28,10 @@ gh rinai — a board over GitHub issues, for agents and people
   gh rinai search [-c COL] [-a @me|LOGIN] [-o @me|LOGIN] [-p PRIO] [-l LABEL] [-t TEXT] [-w]
                                          the board's cards as JSON, filtered
                                          (-o: opened by; -w: waiting on you)
+  gh rinai me [VIEW]                     your open tasks in every repository, as JSON; VIEW is
+                                         waiting (default), assigned, created or involved
+  gh rinai pulse [--all]                 goal updates in this repository, newest first, as JSON;
+                                         --all: every goal you are in, anywhere
   gh rinai goals                         the goals: open-ended work with updates and a health
   gh rinai goal N | ungoal N             make a task a goal, or a goal a task again
   gh rinai update N HEALTH [TEXT | -]    post an update on a goal; HEALTH is on-track, at-risk or off-track
@@ -175,6 +179,16 @@ case "$verb" in
       esac
     done
     api "" GET "/issues" "${q[@]}" ;;
+  me)
+    case "${1:-waiting}" in
+      waiting) q="waiting=1" ;; assigned) q="mine=1" ;; created) q="opened=1" ;; involved) q="involved=1" ;;
+      *) die "me [waiting | assigned | created | involved]" ;;
+    esac
+    run "" GET "/api/search?$q" ;;
+  pulse)
+    if [ "${1:-}" = "--all" ]; then run "" GET "/api/pulse"
+    elif [ -n "${1:-}" ]; then die "pulse [--all]"
+    else need_repo; run "" GET "/api/pulse?repo=$repo"; fi ;;
   goals)
     api "" GET "/goals" ;;
   goal|ungoal)
