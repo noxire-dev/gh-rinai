@@ -25,6 +25,9 @@ gh rinai file TITLE [-c COL] [-p PRIO] [-P PARENT] [-b BODY | -b -] [-m]
 gh rinai search [-c COL] [-a @me|LOGIN] [-o @me|LOGIN] [-p PRIO] [-l LABEL] [-t TEXT] [-w]
                                        the board's cards as JSON, filtered
                                        (-o: opened by; -w: waiting on you)
+gh rinai goals                         the goals: open-ended work with updates and a health
+gh rinai goal N | ungoal N             make a task a goal, or a goal a task again
+gh rinai update N HEALTH [TEXT | -]    post an update on a goal; HEALTH is on-track, at-risk or off-track
 gh rinai cycle                         what the board is doing now, in order, as JSON
 gh rinai cycle add N [N...]            put issues in the cycle
 gh rinai cycle rm N [N...]             take them out

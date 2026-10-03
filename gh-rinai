@@ -7,7 +7,7 @@
 # RINAI_URL overrides it for a local worker.
 set -euo pipefail
 
-VERSION="0.4.0"
+VERSION="0.5.0"
 RINAI_URL="${RINAI_URL:-https://rinai.dev}"
 
 usage() {
@@ -28,6 +28,9 @@ gh rinai — a board over GitHub issues, for agents and people
   gh rinai search [-c COL] [-a @me|LOGIN] [-o @me|LOGIN] [-p PRIO] [-l LABEL] [-t TEXT] [-w]
                                          the board's cards as JSON, filtered
                                          (-o: opened by; -w: waiting on you)
+  gh rinai goals                         the goals: open-ended work with updates and a health
+  gh rinai goal N | ungoal N             make a task a goal, or a goal a task again
+  gh rinai update N HEALTH [TEXT | -]    post an update on a goal; HEALTH is on-track, at-risk or off-track
   gh rinai cycle                         what the board is doing now, in order, as JSON
   gh rinai cycle add N [N...]            put issues in the cycle
   gh rinai cycle rm N [N...]             take them out
@@ -172,6 +175,18 @@ case "$verb" in
       esac
     done
     api "" GET "/issues" "${q[@]}" ;;
+  goals)
+    api "" GET "/goals" ;;
+  goal|ungoal)
+    num "${1:-}"; on=true; said="is a goal"; [ "$verb" = "ungoal" ] && { on=false; said="is a task again"; }
+    patch "#$1 $said" "$1" "{\"goal\":$on}" ;;
+  update)
+    num "${1:-}"; health="${2:-}"; text="${3:-}"
+    case "$health" in on-track|at-risk|off-track) ;; *) die "update N HEALTH [TEXT | -]: HEALTH is on-track, at-risk or off-track" ;; esac
+    [ -n "$text" ] || die 'update N HEALTH TEXT, or update N HEALTH - with the text on stdin'
+    tmp="$(mktemp)"; trap 'rm -f "$tmp"' EXIT
+    if [ "$text" = "-" ]; then cat > "$tmp"; else printf '%s' "$text" > "$tmp"; fi
+    api "update on #$1: $health" POST "/issues/$1/comments?health=$health" -H "content-type: text/plain" --data-binary "@$tmp" ;;
   cycle)
     act="${1:-}"; [ $# -gt 0 ] && shift
     case "$act" in
@@ -195,7 +210,7 @@ case "$verb" in
     fi ;;
   api)
     [ -n "${1:-}" ] && [ -n "${2:-}" ] || die "api METHOD PATH [JSON]"
-    path="/$(unmsys "$2")"; path="/${path#/}"
+    path="$(unmsys "$2")"; path="/${path#/}"
     if [ $# -ge 3 ]; then
       json="$3"
       [ "$json" = "-" ] && json="$(cat)"
