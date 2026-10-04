@@ -7,7 +7,7 @@
 # RINAI_URL overrides it for a local worker.
 set -euo pipefail
 
-VERSION="0.6.0"
+VERSION="0.7.0"
 RINAI_URL="${RINAI_URL:-https://rinai.dev}"
 
 usage() {
@@ -32,6 +32,8 @@ gh rinai — a board over GitHub issues, for agents and people
                                          waiting (default), assigned, created or involved
   gh rinai pulse [--all]                 goal updates in this repository, newest first, as JSON;
                                          --all: every goal you are in, anywhere
+  gh rinai reviews                       pull requests across your repositories, as JSON: needs_review,
+                                         reviewing, completed, created
   gh rinai goals                         the goals: open-ended work with updates and a health
   gh rinai goal N | ungoal N             make a task a goal, or a goal a task again
   gh rinai update N HEALTH [TEXT | -]    post an update on a goal; HEALTH is on-track, at-risk or off-track
@@ -185,6 +187,8 @@ case "$verb" in
       *) die "me [waiting | assigned | created | involved]" ;;
     esac
     run "" GET "/api/search?$q" ;;
+  reviews)
+    run "" GET "/api/reviews" ;;
   pulse)
     if [ "${1:-}" = "--all" ]; then run "" GET "/api/pulse"
     elif [ -n "${1:-}" ]; then die "pulse [--all]"
