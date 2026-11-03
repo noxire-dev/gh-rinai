@@ -17,7 +17,9 @@ gh rinai — a board over GitHub issues, for agents and people
   gh rinai board                         the board as markdown
   gh rinai brief N                       one issue as a brief (its .md)
   gh rinai kodr N [FLAGS]                a Kodr thread on it, its brief the first message;
+                                         the card moves to Ongoing and is assigned to you;
                                          FLAGS go to kodr thread start (--model, --worktree)
+  gh rinai kodr --options                the open issues as Kodr's palette choices
   gh rinai claim N                       move to Ongoing and assign yourself
   gh rinai move N COLUMN                 future | todo | ongoing | in-review | blocked | done
   gh rinai priority N LEVEL              urgent | high | normal | low
@@ -116,11 +118,27 @@ case "$verb" in
     num "${1:-}"; need_repo; run "" GET "/$repo/issues/$1.md" ;;
   kodr)
     # Run in the project's folder: Kodr's plugin action does (kodr-plugin.toml).
-    num "${1:-}"; need_repo; n="$1"; shift
+    need_repo
+    if [ "${1:-}" = "--options" ]; then
+      # The open issues as Kodr's palette choices: number, title, column; working columns first.
+      gh issue list -R "$repo" --state open --limit 200 --json number,title,labels --jq '
+        map({n: .number, t: .title,
+             c: ((.labels | map(.name | select(startswith("status:"))) | first) // "status:todo" | ltrimstr("status:"))})
+        | sort_by({"ongoing": 0, "todo": 1, "blocked": 2, "in-review": 3, "future": 4}[.c] // 5)
+        | .[] | [(.n | tostring), "#\(.n) \(.t)", .c] | @tsv'
+      exit 0
+    fi
+    num "${1:-}"; n="$1"; shift
     command -v kodr >/dev/null 2>&1 || die "kodr is not on PATH: run this from Kodr's Rinai plugin, or install Kodr's command"
     brief="$(run "" GET "/$repo/issues/$n.md")"
     title="$(printf '%s\n' "$brief" | sed -n 's/^# *//p' | head -n 1)"
-    printf '%s\n' "$brief" | kodr thread start --title "${title:-#$n}" "$@" . - ;;
+    thread="$(printf '%s\n' "$brief" | kodr thread start --title "${title:-#$n}" "$@" . -)"
+    # An agent on it is work in progress: Ongoing, and assigned to whoever started it.
+    patch "" "$n" '{"column":"ongoing","assignees":["@me"]}' >/dev/null || true
+    if [ -n "${KODR_PLUGIN_UI_DIR:-}" ]; then
+      kodr plugin chip --thread "$thread" --text "#$n" --title "${title:-#$n}" --url "$RINAI_URL/$repo/issues/$n" --tone info
+    fi
+    printf 'Started %s on #%s, now in Ongoing.\n' "$thread" "$n" ;;
   claim)
     num "${1:-}"; patch "#$1 is yours, in Ongoing" "$1" '{"column":"ongoing","assignees":["@me"]}' ;;
   move)

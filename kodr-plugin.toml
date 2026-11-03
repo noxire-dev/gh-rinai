@@ -2,12 +2,13 @@
 id = "rinai"
 name = "Rinai"
 version = "0.8.0"
-description = "Start a Kodr thread from a Rinai issue: its brief, comments, files and linked pull requests are the first message."
+description = "Pick an open issue from the board and an agent starts on it: its brief is the first message, the card moves to Ongoing, and the thread is labelled with the issue."
 
 [[actions]]
 id = "issue-thread"
-title = "Rinai: new thread from an issue"
+title = "Rinai: start on an issue"
+description = "An agent thread on a board card"
 contexts = ["project"]
-input = { placeholder = "Issue number" }
+input = { placeholder = "Issue number or search", options = ["gh", "rinai", "kodr", "--options"] }
 cwd = "${project.path}"
 command = ["gh", "rinai", "kodr", "${input}"]
