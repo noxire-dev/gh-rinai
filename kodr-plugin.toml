@@ -1,0 +1,13 @@
+# Kodr plugin: `kodr plugin link .` from this folder. Needs gh signed in and this extension installed.
+id = "rinai"
+name = "Rinai"
+version = "0.8.0"
+description = "Start a Kodr thread from a Rinai issue: its brief, comments, files and linked pull requests are the first message."
+
+[[actions]]
+id = "issue-thread"
+title = "Rinai: new thread from an issue"
+contexts = ["project"]
+input = { placeholder = "Issue number" }
+cwd = "${project.path}"
+command = ["gh", "rinai", "kodr", "${input}"]

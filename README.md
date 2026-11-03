@@ -13,6 +13,8 @@ That is the whole install. It uses `gh`'s own token, and the token never appears
 ```
 gh rinai board                         the board as markdown
 gh rinai brief N                       one issue as a brief (its .md)
+gh rinai kodr N [FLAGS]                a Kodr thread on it, its brief the first message;
+                                       FLAGS go to kodr thread start (--model, --worktree)
 gh rinai claim N                       move to Ongoing and assign yourself
 gh rinai move N COLUMN                 future | todo | ongoing | in-review | blocked | done
 gh rinai priority N LEVEL              urgent | high | normal | low

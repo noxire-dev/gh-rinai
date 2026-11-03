@@ -7,7 +7,7 @@
 # RINAI_URL overrides it for a local worker.
 set -euo pipefail
 
-VERSION="0.7.0"
+VERSION="0.8.0"
 RINAI_URL="${RINAI_URL:-https://rinai.dev}"
 
 usage() {
@@ -16,6 +16,8 @@ gh rinai — a board over GitHub issues, for agents and people
 
   gh rinai board                         the board as markdown
   gh rinai brief N                       one issue as a brief (its .md)
+  gh rinai kodr N [FLAGS]                a Kodr thread on it, its brief the first message;
+                                         FLAGS go to kodr thread start (--model, --worktree)
   gh rinai claim N                       move to Ongoing and assign yourself
   gh rinai move N COLUMN                 future | todo | ongoing | in-review | blocked | done
   gh rinai priority N LEVEL              urgent | high | normal | low
@@ -112,6 +114,13 @@ case "$verb" in
     need_repo; run "" GET "/$repo.md" ;;
   brief|show)
     num "${1:-}"; need_repo; run "" GET "/$repo/issues/$1.md" ;;
+  kodr)
+    # Run in the project's folder: Kodr's plugin action does (kodr-plugin.toml).
+    num "${1:-}"; need_repo; n="$1"; shift
+    command -v kodr >/dev/null 2>&1 || die "kodr is not on PATH: run this from Kodr's Rinai plugin, or install Kodr's command"
+    brief="$(run "" GET "/$repo/issues/$n.md")"
+    title="$(printf '%s\n' "$brief" | sed -n 's/^# *//p' | head -n 1)"
+    printf '%s\n' "$brief" | kodr thread start --title "${title:-#$n}" "$@" . - ;;
   claim)
     num "${1:-}"; patch "#$1 is yours, in Ongoing" "$1" '{"column":"ongoing","assignees":["@me"]}' ;;
   move)
