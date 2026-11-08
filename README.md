@@ -59,10 +59,16 @@ gh rinai merge 40                # when you have been told you may
 
 ## For Claude Code
 
-One allowlist entry covers every verb:
+One allowlist entry covers the verbs. `merge` and the raw `api` stay under `ask`,
+because a brief carries comments anyone can write and those two are what an
+injected line could turn into damage:
 
 ```json
-{ "permissions": { "allow": ["Bash(gh rinai *)"] } }
+{ "permissions": {
+  "allow": ["Bash(gh rinai *)"],
+  "ask": ["Bash(gh rinai merge *)", "Bash(gh rinai api *)",
+          "Bash(gh rinai -R * merge *)", "Bash(gh rinai -R * api *)"]
+} }
 ```
 
 ## On Windows
