@@ -7,7 +7,7 @@
 # RINAI_URL overrides it for a local worker.
 set -euo pipefail
 
-VERSION="0.8.0"
+VERSION="0.8.1"
 RINAI_URL="${RINAI_URL:-https://rinai.dev}"
 
 usage() {
@@ -101,6 +101,19 @@ json_str() {
 
 num() { [[ "${1:-}" =~ ^[0-9]+$ ]] || die "expected an issue number, got '${1:-}'"; }
 
+# attach and download take paths, and a brief carries comments anyone can write.
+# One injected line must not upload ~/.ssh/id_ed25519 or overwrite ~/.bashrc, so
+# both stay inside the repository you are in (or the current directory outside
+# one), and attach refuses the usual secrets. A person who means it can use the
+# web page.
+inside() {
+  local root dir
+  # Through cd and pwd, so git's C:/ and bash's /c/ spell the same path on Windows.
+  root="$(cd "$(git rev-parse --show-toplevel 2>/dev/null || pwd)" && pwd -P)"
+  dir="$(cd "$(dirname -- "$1")" 2>/dev/null && pwd -P)" || return 1
+  case "$dir/" in "$root"/*) return 0 ;; *) return 1 ;; esac
+}
+
 # Git Bash on Windows rewrites an argument that starts with / into a Windows
 # path before a native gh sees it ("/issues" arrives as "C:/Program Files/Git/issues").
 # Undo it, so `gh rinai api GET /issues` means what it says on every platform.
@@ -155,6 +168,10 @@ case "$verb" in
     api "commented on #$1" POST "/issues/$1/comments" -H "content-type: text/plain" --data-binary "@$tmp" ;;
   attach)
     num "${1:-}"; [ -f "${2:-}" ] || die "attach N FILE: no file '${2:-}'"
+    inside "$2" || die "attach: '$2' is outside this repository; attach files from inside it"
+    case "$(basename -- "$2")" in
+      .env|.env.*|*.pem|*.key|id_rsa*|id_ed25519*|id_ecdsa*|.dev.vars|.npmrc|.netrc) die "attach: '$(basename -- "$2")' looks like a secret; not attaching it" ;;
+    esac
     api "attached $(basename "$2") to #$1" POST "/issues/$1/artifacts" -F "file=@$2" ;;
   artifacts)
     num "${1:-}"; api "" GET "/issues/$1/artifacts" ;;
@@ -162,7 +179,9 @@ case "$verb" in
     # The list gives each file's URL; the URL needs the same token. Both calls
     # go through `call`, so the token stays off the command line here too.
     num "${1:-}"; name="${2:-}"; [ -n "$name" ] || die "download N NAME [-o PATH]"
-    out="$name"; [ "${3:-}" = "-o" ] && { [ -n "${4:-}" ] || die "-o needs a PATH"; out="$4"; }
+    # The name is the uploader's choice: only its last part becomes a path here.
+    out="$(basename -- "$name")"; [ "${3:-}" = "-o" ] && { [ -n "${4:-}" ] || die "-o needs a PATH"; out="$4"; }
+    inside "$out" || die "download: '$out' is outside this repository; save inside it"
     need_repo
     listing="$(run "" GET "/api/$repo/issues/$1/artifacts")"
     url="$(printf '%s' "$listing" | tr '{' '\n' | grep -F "\"filename\":\"$name\"" | sed -n 's/.*"url":"\([^"]*\)".*/\1/p' | head -1)"
